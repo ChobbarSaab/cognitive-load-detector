@@ -1,0 +1,58 @@
+AI COGNITIVE LOAD DETECTOR - RESULTS (sample / simulated data)
+==============================================================
+
+Students in dataset: 150
+Missing values found: 0
+Training students: 105   Testing students: 45
+Inputs used: time_minutes, correct_answers, errors_made, difficulty_rating
+
+ACCURACY ON TEST DATA: 73%  (33 of 45 correct)
+
+Confusion matrix (rows = actual, columns = predicted):
+          Low  Moderate  High
+Low         6         5     0
+Moderate    2        17     4
+High        0         1    10
+
+Per-category scores:
+              precision    recall  f1-score   support
+
+         Low       0.75      0.55      0.63        11
+    Moderate       0.74      0.74      0.74        23
+        High       0.71      0.91      0.80        11
+
+    accuracy                           0.73        45
+   macro avg       0.73      0.73      0.72        45
+weighted avg       0.74      0.73      0.73        45
+
+Feature importance (how much the tree relies on each input):
+  time_minutes       38%
+  difficulty_rating  36%
+  errors_made        18%
+  correct_answers    9%
+
+Consistency check (similar inputs -> same prediction): PASSED
+
+Decision rules the AI learned:
+|--- difficulty_rating <= 3.50
+|   |--- time_minutes <= 11.95
+|   |   |--- errors_made <= 2.50
+|   |   |   |--- class: Low
+|   |   |--- errors_made >  2.50
+|   |   |   |--- class: Moderate
+|   |--- time_minutes >  11.95
+|   |   |--- errors_made <= 0.50
+|   |   |   |--- class: Low
+|   |   |--- errors_made >  0.50
+|   |   |   |--- class: Moderate
+|--- difficulty_rating >  3.50
+|   |--- time_minutes <= 14.55
+|   |   |--- correct_answers <= 5.50
+|   |   |   |--- class: High
+|   |   |--- correct_answers >  5.50
+|   |   |   |--- class: Moderate
+|   |--- time_minutes >  14.55
+|   |   |--- time_minutes <= 15.60
+|   |   |   |--- class: High
+|   |   |--- time_minutes >  15.60
+|   |   |   |--- class: High
