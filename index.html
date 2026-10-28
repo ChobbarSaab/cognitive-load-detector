@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AI Cognitive Load Detector</title>
+<meta name="description" content="Take a short learning task and let a Decision Tree model estimate your cognitive load as Low, Moderate or High.">
+
+<!-- ======================= EASY EDIT ======================= -->
+<script>
+const CONFIG = {
+  // Paste your Google Apps Script "Web app URL" between the quotes.
+  // It looks like: https://script.google.com/macros/s/XXXXXXXX/exec
+  // Leave it empty ("") to test the site without saving responses.
+  SHEET_URL: ""
+};
+</script>
+<!-- ===================== END EASY EDIT ===================== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a study instrument — tabs for Take the task / Try the model / Responses; one focused column per step */
+:root{
+  --bg:#F3F4F9; --surface:#FFFFFF; --fg:#1A1C2C; --muted:#5D6178; --line:#DADCE8;
+  --accent:#4B3BC4; --accent-soft:#E7E4FB; --on-accent:#FFFFFF;
+  --low:#1F8A5B; --low-soft:#DDF3E8; --mod:#B87700; --mod-soft:#FBEFD6; --high:#C23B3B; --high-soft:#F9E0E0;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Source Sans 3",ui-sans-serif,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12131D; --surface:#1B1D2B; --fg:#ECEDF5; --muted:#A3A7BF; --line:#2E3145;
+  --accent:#A99CFF; --accent-soft:#2A2550; --on-accent:#12131D;
+  --low:#4FCB92; --low-soft:#14352A; --mod:#F0B44A; --mod-soft:#3A2D12; --high:#F07A7A; --high-soft:#3D1D1F;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12131D; --surface:#1B1D2B; --fg:#ECEDF5; --muted:#A3A7BF; --line:#2E3145;
+  --accent:#A99CFF; --accent-soft:#2A2550; --on-accent:#12131D;
+  --low:#4FCB92; --low-soft:#14352A; --mod:#F0B44A; --mod-soft:#3A2D12; --high:#F07A7A; --high-soft:#3D1D1F;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{background:var(--bg);color:var(--fg);font:400 16px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+.wrap{max-width:980px;margin:0 auto;display:grid;gap:22px}
+header{display:grid;gap:6px}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font:800 clamp(28px,5vw,44px)/1.05 var(--display);margin:0;text-wrap:balance}
+.lede{color:var(--muted);margin:0;max-width:62ch}
+h2{font:600 18px/1.2 var(--display);margin:0 0 12px}
+h3{font:600 20px/1.25 var(--display);margin:0;text-wrap:balance}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs a{font:600 15px/1 var(--body);padding:12px 14px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
+.count{font:500 12px/1 var(--mono);background:var(--accent-soft);color:var(--accent);padding:3px 6px;border-radius:999px;margin-left:6px}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;min-width:0}
+.narrow{max-width:680px;width:100%;margin:0 auto;display:grid;gap:18px}
+.btn{font:600 15px/1 var(--body);padding:13px 20px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);cursor:pointer;justify-self:start}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn.small{padding:8px 12px;font-size:13px}
+button:focus-visible,input:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.muted{color:var(--muted)}
+.check{display:flex;gap:10px;align-items:flex-start;font-weight:600}
+.check input{width:20px;height:20px;margin-top:2px;accent-color:var(--accent)}
+ul.plain{margin:0;padding-left:20px;display:grid;gap:4px}
+
+/* quiz */
+.qhead{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.progress{font:500 13px/1 var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.pbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.pbar div{height:100%;background:var(--accent);transition:width .25s}
+fieldset.q{border:0;margin:0;padding:18px 0;border-top:1px solid var(--line);display:grid;gap:10px;min-width:0}
+fieldset.q:first-of-type{border-top:0;padding-top:0}
+fieldset.q legend{font-weight:600;padding:0;margin-bottom:10px;display:flex;gap:10px}
+fieldset.q legend span{font:500 13px/1.6 var(--mono);color:var(--accent);flex:none}
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:520px){.opts{grid-template-columns:minmax(0,1fr)}}
+.opt{display:flex;gap:10px;align-items:center;padding:11px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.opt input{accent-color:var(--accent);margin:0}
+.opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+
+/* rating scales */
+.scale{display:grid;gap:6px}
+.scale .btns{display:grid;gap:6px}
+.scale button{font:500 15px/1 var(--mono);padding:12px 0;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.scale button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.ends{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:13px}
+
+/* reading */
+.reading{border-radius:12px;padding:20px;display:grid;gap:4px;transition:background .25s}
+.reading .k{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.reading .level{font:800 clamp(40px,8vw,56px)/1 var(--display)}
+.reading[data-level="Low"]{background:var(--low-soft)} .reading[data-level="Low"] .level{color:var(--low)}
+.reading[data-level="Moderate"]{background:var(--mod-soft)} .reading[data-level="Moderate"] .level{color:var(--mod)}
+.reading[data-level="High"]{background:var(--high-soft)} .reading[data-level="High"] .level{color:var(--high)}
+.reading p{margin:6px 0 0;font-size:15px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));gap:12px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat b{display:block;font:600 22px/1.2 var(--display);font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:13px}
+.notice{border-radius:10px;padding:14px;background:var(--accent-soft);display:grid;gap:8px}
+.notice code{font:500 15px/1.4 var(--mono);word-break:break-all;user-select:all;color:var(--fg)}
+
+/* model panel */
+.panel{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px}
+@media (max-width:760px){.panel{grid-template-columns:minmax(0,1fr)}}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.presets button{font:600 13px/1 var(--body);padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.presets button:hover{border-color:var(--accent);color:var(--accent)}
+.field{display:grid;gap:8px;padding-block:14px;border-top:1px solid var(--line)}
+.field:first-of-type{border-top:0;padding-top:0}
+.field-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.field label,.field .lbl{font-weight:600}
+.field small{color:var(--muted);font-size:13px}
+.val{font:500 15px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--accent);white-space:nowrap}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.result{display:grid;gap:18px;align-content:start}
+.gauge{display:grid;gap:8px}
+.bar{display:grid;grid-template-columns:76px 1fr 42px;align-items:center;gap:10px;font-size:14px}
+.track{height:10px;border-radius:5px;background:var(--line);overflow:hidden}
+.fill{height:100%;border-radius:5px;transition:width .3s}
+.pct{font:500 13px/1 var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.path{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:s}
+.path li{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start;counter-increment:s}
+.path li::before{content:counter(s);font:500 12px/28px var(--mono);text-align:center;width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent)}
+.path .rule{font:500 13px/1.4 var(--mono);color:var(--muted)}
+.path .ans{font-weight:600}
+.foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px;color:var(--muted);font-size:14px}
+.foot strong{display:block;color:var(--fg);font:600 22px/1.2 var(--display)}
+.note{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;margin:16px 0 0}
+
+/* responses */
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font:500 12px/1.2 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+tr:last-child td{border-bottom:0}
+.pill{font:600 12px/1 var(--body);padding:4px 8px;border-radius:999px}
+.pill.Low{background:var(--low-soft);color:var(--low)} .pill.Moderate{background:var(--mod-soft);color:var(--mod)} .pill.High{background:var(--high-soft);color:var(--high)}
+textarea{width:100%;min-height:90px;font:500 13px/1.5 var(--mono);padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);resize:vertical}
+.linkbtn{background:none;border:0;color:var(--muted);font:600 13px/1 var(--body);cursor:pointer;padding:4px}
+.linkbtn.armed{color:var(--high)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">AI prototype · Decision Tree</span>
+    <h1>AI Cognitive Load Detector</h1>
+    <p class="lede">Students take a short learning task here. The site times it, counts changed answers, asks how hard it felt, and the AI estimates their cognitive load as Low, Moderate or High.</p>
+  </header>
+
+  <nav class="tabs" aria-label="Sections">
+    <a href="#task" id="tab-task">Take the task</a>
+    <a href="#model" id="tab-model">Try the model</a>
+  </nav>
+
+  <!-- ================= TAKE THE TASK ================= -->
+  <section id="view-task">
+    <!-- step 1: intro -->
+    <div class="narrow" id="step-intro">
+      <div class="card" style="display:grid;gap:16px">
+        <h3>A short learning task (about 10–15 minutes)</h3>
+        <ul class="plain">
+          <li>10 multiple-choice questions that get harder as you go.</li>
+          <li>Work without a calculator. Rough paper is fine.</li>
+          <li>The timer starts when you press Start and stops when you submit.</li>
+          <li>Afterwards you rate how difficult the task was and how much effort it took.</li>
+        </ul>
+        <p class="muted" style="margin:0">This is not a test of you. Your name is seen only by the person running the project and is never shown in the results. Answers are used only for this school project.</p>
+        <div style="display:grid;gap:6px">
+          <label for="sname" style="font-weight:600">Your name</label>
+          <input type="text" id="sname" maxlength="60" autocomplete="name" placeholder="e.g. Priya Sharma" style="font:400 16px/1.4 var(--body);padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)">
+        </div>
+        <label class="check"><input type="checkbox" id="consent"> I agree to take part voluntarily.</label>
+        <button class="btn" id="startBtn" disabled>Start the task</button>
+      </div>
+    </div>
+
+    <!-- step 2: questions -->
+    <div class="narrow" id="step-quiz" hidden>
+      <div class="card" style="display:grid;gap:14px">
+        <div class="qhead"><h3>Learning task</h3><span class="progress" id="progress">0 of 10 answered</span></div>
+        <div class="pbar"><div id="pfill" style="width:0%"></div></div>
+        <form id="quizForm"></form>
+        <button class="btn" id="finishBtn" disabled>Submit answers</button>
+      </div>
+    </div>
+
+    <!-- step 3: ratings -->
+    <div class="narrow" id="step-rate" hidden>
+      <div class="card" style="display:grid;gap:22px">
+        <h3>Two quick questions about the task</h3>
+        <div class="scale">
+          <span class="lbl" id="dLbl" style="font-weight:600">How difficult was this task?</span>
+          <div class="btns" id="dBtns" role="group" aria-labelledby="dLbl" style="grid-template-columns:repeat(5,1fr)"></div>
+          <div class="ends"><span>1 · Very easy</span><span>5 · Very hard</span></div>
+        </div>
+        <div class="scale">
+          <span class="lbl" id="eLbl" style="font-weight:600">How much mental effort did you put into this task?</span>
+          <div class="btns" id="eBtns" role="group" aria-labelledby="eLbl" style="grid-template-columns:repeat(9,1fr)"></div>
+          <div class="ends"><span>1 · Very, very low</span><span>9 · Very, very high</span></div>
+        </div>
+        <button class="btn" id="rateBtn" disabled>See my result</button>
+      </div>
+    </div>
+
+    <!-- step 4: result -->
+    <div class="narrow" id="step-done" hidden>
+      <div class="card" style="display:grid;gap:18px">
+        <div class="reading" id="tReading" data-level="Moderate">
+          <span class="k">AI estimate of your cognitive load</span>
+          <span class="level" id="tLevel">Moderate</span>
+          <p id="tCompare"></p>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="sScore">–</b><span>Correct answers</span></div>
+          <div class="stat"><b id="sTime">–</b><span>Time taken</span></div>
+          <div class="stat"><b id="sChanges">–</b><span>Answers changed</span></div>
+          <div class="stat"><b id="sEffort">–</b><span>Your effort rating</span></div>
+        </div>
+        <div class="notice" id="saveNote"><span class="muted">Saving your response…</span></div>
+        <div class="row">
+          <button class="btn" id="againBtn">Next student</button>
+          <button class="btn ghost" id="showAnsBtn">Show correct answers</button>
+        </div>
+        <ol id="answerKey" hidden style="margin:0;padding-left:22px;display:grid;gap:4px"></ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TRY THE MODEL ================= -->
+  <section id="view-model" hidden style="display:grid;gap:20px">
+    <div class="panel">
+      <div class="card">
+        <h2>Student task data</h2>
+        <div class="presets" role="group" aria-label="Load an example student">
+          <button type="button" data-p="7,9,1,2">Example: quick and accurate</button>
+          <button type="button" data-p="12.5,7,4,3">Example: steady</button>
+          <button type="button" data-p="17,4,7,5">Example: struggling</button>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="time">Completion time</label><span class="val" id="timeV"></span></div>
+          <input type="range" id="time" min="3" max="25" step="0.5" value="12.5">
+          <small>Minutes taken to finish the task</small>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="correct">Correct answers</label><span class="val" id="correctV"></span></div>
+          <input type="range" id="correct" min="0" max="10" step="1" value="7">
+          <small>Out of 10 questions</small>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="errors">Errors made</label><span class="val" id="errorsV"></span></div>
+          <input type="range" id="errors" min="0" max="15" step="1" value="4">
+          <small>Times the student changed an answer while working</small>
+        </div>
+        <div class="field">
+          <div class="field-head"><span class="lbl" id="diffL">Reported difficulty</span><span class="val" id="diffV"></span></div>
+          <div class="scale"><div class="btns" role="group" aria-labelledby="diffL" id="diff" style="grid-template-columns:repeat(5,1fr)"></div></div>
+          <div class="ends"><span>1 · Very easy</span><span>5 · Very hard</span></div>
+        </div>
+      </div>
+      <div class="card result">
+        <div class="reading" id="reading" data-level="Moderate" aria-live="polite">
+          <span class="k">Estimated cognitive load</span>
+          <span class="level" id="level">Moderate</span>
+          <p id="advice"></p>
+        </div>
+        <div><h2>Model confidence</h2><div class="gauge" id="gauge"></div></div>
+        <div><h2>How the AI decided</h2><ol class="path" id="path"></ol></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="foot">
+        <div><strong>73%</strong>Accuracy on 45 test students the model never saw</div>
+        <div><strong>150</strong>Students in the sample dataset (105 train, 45 test)</div>
+        <div><strong>1–9</strong>Paas mental effort scale used as the true label (1–3 Low, 4–6 Moderate, 7–9 High)</div>
+      </div>
+      <p class="note">Model trained on simulated sample data. Results are estimates to help improve learning materials, not medical or psychological diagnoses.</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ---------- the trained Decision Tree (exported from 2_train_model.py) ---------- */
+const TREE={"features":["time_minutes","correct_answers","errors_made","difficulty_rating"],"classes":["High","Low","Moderate"],"left":[1,2,3,-1,-1,6,-1,-1,9,10,-1,-1,13,-1,-1],"right":[8,5,4,-1,-1,7,-1,-1,12,11,-1,-1,14,-1,-1],"feature":[3,0,2,-2,-2,2,-2,-2,0,1,-2,-2,0,-2,-2],"threshold":[3.5,11.95,2.5,-2.0,-2.0,0.5,-2.0,-2.0,14.55,5.5,-2.0,-2.0,15.6,-2.0,-2.0],"value":[[0.257,0.238,0.505],[0.068,0.342,0.589],[0.0,0.595,0.405],[0.0,0.842,0.158],[0.0,0.333,0.667],[0.139,0.083,0.778],[0.0,1.0,0.0],[0.143,0.057,0.8],[0.688,0.0,0.312],[0.357,0.0,0.643],[0.8,0.0,0.2],[0.111,0.0,0.889],[0.944,0.0,0.056],[0.75,0.0,0.25],[1.0,0.0,0.0]]};
+function predict(x){
+  let n=0;const steps=[];
+  while(TREE.left[n]!==-1){
+    const f=TREE.features[TREE.feature[n]],t=TREE.threshold[n],v=x[f],goLeft=v<=t;
+    steps.push({f,t,v,goLeft});n=goLeft?TREE.left[n]:TREE.right[n];
+  }
+  const probs={};TREE.classes.forEach((c,i)=>probs[c]=TREE.value[n][i]);
+  const label=TREE.classes[TREE.value[n].indexOf(Math.max(...TREE.value[n]))];
+  return {label,probs,steps};
+}
+const loadFromEffort=e=>e<=3?"Low":e<=6?"Moderate":"High";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+
+/* ---------- tabs (hash routing) ---------- */
+const VIEWS=["task","model"];
+function route(){
+  let v=(location.hash||"#task").slice(1);
+  if(!VIEWS.includes(v))v="task";
+  VIEWS.forEach(k=>{$("view-"+k).hidden=k!==v;const t=$("tab-"+k);t.toggleAttribute("aria-current",k===v);if(k===v)t.setAttribute("aria-current","page")});
+}
+window.addEventListener("hashchange",route);
+
+/* ================= TASK ================= */
+const QUESTIONS=[
+  {q:"What is 15% of 200?",o:["15","20","30","35"],a:2},
+  {q:"What comes next: 2, 4, 8, 16, ?",o:["18","24","32","36"],a:2},
+  {q:"A train travels 120 km in 2 hours. What is its speed?",o:["40 km/h","60 km/h","80 km/h","240 km/h"],a:1},
+  {q:"3 pens cost ₹45. How much do 7 pens cost?",o:["₹95","₹105","₹115","₹135"],a:1},
+  {q:"What comes next: 1, 4, 9, 16, 25, ?",o:["30","35","36","49"],a:2},
+  {q:"A shirt costs ₹800 and has a 25% discount. What is the sale price?",o:["₹550","₹600","₹625","₹775"],a:1},
+  {q:"All roses are flowers. Some flowers fade quickly. Which must be true?",o:["All roses fade quickly","Some roses fade quickly","No roses fade quickly","None of these must be true"],a:3},
+  {q:"What comes next: 3, 5, 9, 17, 33, ?",o:["49","57","65","66"],a:2},
+  {q:"The average of 5 numbers is 20. One number is removed and the average of the other 4 is 18. Which number was removed?",o:["18","22","28","30"],a:2},
+  {q:"Pipe A fills a tank in 6 hours and pipe B fills it in 3 hours. How long do both together take?",o:["1.5 hours","2 hours","4.5 hours","9 hours"],a:1}
+];
+let T; // task state
+function resetTask(){T={answers:Array(QUESTIONS.length).fill(-1),changes:0,start:0,minutes:0,diff:0,effort:0};}
+resetTask();
+
+function show(step){["intro","quiz","rate","done"].forEach(s=>$("step-"+s).hidden=s!==step);window.scrollTo({top:0,behavior:"smooth"});}
+
+const cleanName=()=>$("sname").value.replace(/[|\s]+/g," ").trim().slice(0,60);
+const canStart=()=>{$("startBtn").disabled=!($("consent").checked&&cleanName())};
+$("consent").onchange=canStart;$("sname").oninput=canStart;
+$("startBtn").onclick=()=>{
+  resetTask();
+  $("quizForm").innerHTML=QUESTIONS.map((x,i)=>`<fieldset class="q"><legend><span>Q${i+1}</span>${esc(x.q)}</legend><div class="opts">${
+    x.o.map((o,j)=>`<label class="opt" for="q${i}o${j}"><input type="radio" name="q${i}" id="q${i}o${j}" value="${j}">${esc(o)}</label>`).join("")}</div></fieldset>`).join("");
+  updateProgress();T.start=Date.now();show("quiz");
+};
+$("quizForm").addEventListener("change",e=>{
+  const m=/^q(\d+)$/.exec(e.target.name);if(!m)return;
+  const i=+m[1],v=+e.target.value;
+  if(T.answers[i]!==-1&&T.answers[i]!==v)T.changes++; // a changed answer = one "error made"
+  T.answers[i]=v;updateProgress();
+});
+$("quizForm").addEventListener("submit",e=>e.preventDefault());
+function updateProgress(){
+  const n=T.answers.filter(a=>a!==-1).length;
+  $("progress").textContent=`${n} of ${QUESTIONS.length} answered`;
+  $("pfill").style.width=(n/QUESTIONS.length*100)+"%";
+  $("finishBtn").disabled=n<QUESTIONS.length;
+}
+$("finishBtn").onclick=()=>{T.minutes=Math.round((Date.now()-T.start)/6000)/10;buildScales();show("rate");};
+
+function buildScales(){
+  const mk=(box,n,key)=>{$(box).innerHTML="";for(let i=1;i<=n;i++){const b=document.createElement("button");b.type="button";b.id=box+i;b.textContent=i;b.setAttribute("aria-pressed","false");
+    b.onclick=()=>{T[key]=i;[...$(box).children].forEach(c=>c.setAttribute("aria-pressed",String(+c.textContent===i)));$("rateBtn").disabled=!(T.diff&&T.effort)};$(box).appendChild(b)}};
+  mk("dBtns",5,"diff");mk("eBtns",9,"effort");$("rateBtn").disabled=true;
+}
+
+$("rateBtn").onclick=async()=>{
+  const correct=T.answers.reduce((s,a,i)=>s+(a===QUESTIONS[i].a?1:0),0);
+  const rec={time_minutes:Math.max(0.1,T.minutes),correct_answers:correct,wrong_answers:QUESTIONS.length-correct,
+    errors_made:T.changes,difficulty_rating:T.diff,mental_effort:T.effort};
+  rec.cognitive_load=loadFromEffort(rec.mental_effort);
+  rec.predicted_load=predict(rec).label;
+  rec.name=cleanName();rec.createdAt=Date.now();rec.source="website";
+
+  $("tReading").querySelector(".k").textContent=`AI estimate of cognitive load for ${rec.name}`;
+  $("tReading").dataset.level=rec.predicted_load;$("tLevel").textContent=rec.predicted_load;
+  $("tCompare").textContent=rec.predicted_load===rec.cognitive_load
+    ?`Your own effort rating also says ${rec.cognitive_load}. The AI matched you.`
+    :`Your own effort rating says ${rec.cognitive_load}. The AI estimated ${rec.predicted_load} from your time, score, changed answers and difficulty.`;
+  $("sScore").textContent=`${correct} / 10`;$("sTime").textContent=`${rec.time_minutes} min`;
+  $("sChanges").textContent=rec.errors_made;$("sEffort").textContent=`${rec.mental_effort} / 9`;
+  $("answerKey").hidden=true;$("answerKey").innerHTML=QUESTIONS.map((x,i)=>`<li>${esc(x.o[x.a])}${T.answers[i]===x.a?" ✓":` <span class="muted">(you chose ${esc(x.o[T.answers[i]])})</span>`}</li>`).join("");
+  $("saveNote").innerHTML=`<span class="muted">Saving your response…</span>`;
+  show("done");
+
+  trySave(rec);
+};
+async function trySave(rec){
+  $("saveNote").innerHTML=`<span class="muted">Saving your response…</span>`;
+  const r=await saveRecord(rec);
+  if(r==="ok"){
+    $("saveNote").innerHTML=`<strong>Response saved.</strong><span class="muted">Thank you. Press Next student to hand the device to the next person.</span>`;
+  }else if(r==="nourl"){
+    $("saveNote").innerHTML=`<strong>Test mode: this response was not saved.</strong><span class="muted">To save responses, paste your Google Sheet web app link into the EASY EDIT section at the top of index.html.</span>`;
+  }else{
+    $("saveNote").innerHTML=`<strong>Your response could not be saved.</strong><span class="muted">Check the internet connection, then try again. Please don't close this page.</span><button class="btn small" id="retryBtn" type="button" style="justify-self:start">Try again</button>`;
+    $("retryBtn").onclick=()=>trySave(rec);
+  }
+}
+$("againBtn").onclick=()=>{$("consent").checked=false;$("sname").value="";$("startBtn").disabled=true;resetTask();show("intro");};
+$("showAnsBtn").onclick=()=>{$("answerKey").hidden=!$("answerKey").hidden};
+
+async function saveRecord(rec){
+  const url=(CONFIG.SHEET_URL||"").trim();
+  if(!url)return "nourl";
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      // text/plain body keeps this a "simple" request that Google Apps Script accepts from any site
+      const res=await fetch(url,{method:"POST",body:JSON.stringify(rec)});
+      const out=await res.json();
+      if(out&&out.ok)return "ok";
+    }catch(e){}
+    await new Promise(r=>setTimeout(r,1200));
+  }
+  return "fail";
+}
+
+/* ================= TRY THE MODEL ================= */
+const NAMES={time_minutes:["Completion time"," min"],correct_answers:["Correct answers",""],errors_made:["Errors made",""],difficulty_rating:["Reported difficulty",""]};
+const ORDER=["Low","Moderate","High"];
+const COLOR={Low:"var(--low)",Moderate:"var(--mod)",High:"var(--high)"};
+const ADVICE={Low:"The task looks comfortable for this student. It could be made a little more challenging.",
+  Moderate:"The task is demanding but manageable. This is usually a healthy level for learning.",
+  High:"The task looks very demanding. Consider simpler explanations, worked examples or smaller steps."};
+const s={time:12.5,correct:7,errors:4,diff:3};
+for(let i=1;i<=5;i++){const b=document.createElement("button");b.type="button";b.id="diff"+i;b.textContent=i;b.onclick=()=>{s.diff=i;runModel()};$("diff").appendChild(b)}
+const fmt=v=>Number.isInteger(v)?v:v.toFixed(v%0.5===0?1:2);
+function runModel(){
+  $("time").value=s.time;$("correct").value=s.correct;$("errors").value=s.errors;
+  $("timeV").textContent=s.time.toFixed(1)+" min";$("correctV").textContent=s.correct+" / 10";
+  $("errorsV").textContent=s.errors;$("diffV").textContent=s.diff+" / 5";
+  for(let i=1;i<=5;i++)$("diff"+i).setAttribute("aria-pressed",String(i===s.diff));
+  const r=predict({time_minutes:s.time,correct_answers:s.correct,errors_made:s.errors,difficulty_rating:s.diff});
+  $("reading").dataset.level=r.label;$("level").textContent=r.label;$("advice").textContent=ADVICE[r.label];
+  $("gauge").innerHTML=ORDER.map(c=>{const p=Math.round(r.probs[c]*100);
+    return `<div class="bar"><span>${c}</span><div class="track"><div class="fill" style="width:${p}%;background:${COLOR[c]}"></div></div><span class="pct">${p}%</span></div>`}).join("");
+  $("path").innerHTML=r.steps.map(st=>{const [nm,u]=NAMES[st.f];
+    return `<li><div><div class="rule">Is ${nm.toLowerCase()} ≤ ${fmt(st.t)}${u}?</div><div class="ans">${st.goLeft?"Yes":"No"}, it is ${fmt(st.v)}${u}</div></div></li>`}).join("")
+    +`<li><div><div class="rule">Final answer</div><div class="ans">${r.label} cognitive load</div></div></li>`;
+}
+$("time").oninput=e=>{s.time=+e.target.value;runModel()};
+$("correct").oninput=e=>{s.correct=+e.target.value;runModel()};
+$("errors").oninput=e=>{s.errors=+e.target.value;runModel()};
+document.querySelectorAll(".presets button").forEach(b=>b.onclick=()=>{const [t,c,e,d]=b.dataset.p.split(",").map(Number);Object.assign(s,{time:t,correct:c,errors:e,diff:d});runModel()});
+runModel();
+
+route();
+</script>
+</body>
+</html>
